@@ -1,0 +1,26 @@
+name: xptoz
+version: "1.0.0"
+config-version: 2
+
+profile: xptoz
+
+model-paths: ["models"]
+macro-paths: ["macros"]
+test-paths: ["tests"]
+seed-paths: ["seeds"]
+analysis-paths: ["analyses"]
+snapshot-paths: ["snapshots"]
+
+target-path: target
+clean-targets: ["target", "dbt_packages"]
+
+# Cada camada é gravada no seu próprio schema do Postgres.
+# Os modelos de cada camada são criados na Fase 2.
+models:
+  xptoz:
+    staging:
+      +schema: staging
+    intermediate:
+      +schema: intermediate
+    marts:
+      +schema: marts

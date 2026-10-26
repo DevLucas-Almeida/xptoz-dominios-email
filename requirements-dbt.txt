@@ -1,0 +1,4 @@
+# dbt Core 1.x + adaptador Postgres, instalados num virtualenv isolado (/opt/dbt_venv).
+# dbt-core fica fixado explicitamente: sem isso o pip resolve para uma versão beta.
+dbt-core==1.12.6
+dbt-postgres==1.11.0

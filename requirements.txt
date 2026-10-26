@@ -1,0 +1,5 @@
+# Dependências instaladas no ambiente Python do Airflow (imagem apache/airflow).
+# O dbt NÃO entra aqui: ele roda num virtualenv separado (ver requirements-dbt.txt)
+# para não conflitar com as dependências do Airflow.
+astronomer-cosmos==1.15.1
+Faker==40.43.0

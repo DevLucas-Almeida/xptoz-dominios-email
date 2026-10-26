@@ -1,0 +1,3 @@
+# Garante finais de linha LF mesmo em clones no Windows
+# (scripts com CRLF quebram dentro dos containers Linux)
+* text=auto eol=lf

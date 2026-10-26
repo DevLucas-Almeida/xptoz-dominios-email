@@ -1,0 +1,30 @@
+# Credenciais e variáveis locais (nunca versionar)
+.env
+.env.*
+!.env.example
+
+# Airflow
+logs/*
+!logs/.gitkeep
+airflow.cfg
+airflow.db
+standalone_admin_password.txt
+
+# dbt
+dbt/target/
+dbt/logs/
+dbt/dbt_packages/
+dbt/.user.yml
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+
+# Editores / SO
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
