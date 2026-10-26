@@ -4,7 +4,7 @@
 COMPOSE = docker compose
 CLI     = $(COMPOSE) run --rm airflow-cli
 
-.PHONY: help env build up down reset ps logs load-data db-count dbt-debug shell smoke-test
+.PHONY: help env build up down reset ps logs load-data db-count dbt-debug dbt-build dbt-docs shell smoke-test
 
 help: ## Lista os comandos disponíveis
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-12s %s\n", $$1, $$2}'
@@ -38,6 +38,12 @@ db-count: ## Conta os registros de users_info
 
 dbt-debug: ## Valida a conexão do dbt com o banco
 	$(CLI) bash -c "dbt debug"
+
+dbt-build: ## Executa os modelos e testes do dbt (staging → intermediate → marts)
+	$(CLI) bash -c "dbt build"
+
+dbt-docs: ## Gera e serve a documentação do dbt em http://localhost:8081
+	$(COMPOSE) run --rm -p 8081:8081 airflow-cli bash -c "dbt docs generate && dbt docs serve --host 0.0.0.0 --port 8081 --no-browser"
 
 smoke-test: ## Executa a DAG de verificação do ambiente
 	$(CLI) airflow dags test smoke_test_ambiente

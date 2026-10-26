@@ -15,12 +15,14 @@ target-path: target
 clean-targets: ["target", "dbt_packages"]
 
 # Cada camada é gravada no seu próprio schema do Postgres.
-# Os modelos de cada camada são criados na Fase 2.
+# staging é incremental (configurado no próprio modelo); as demais são tabelas.
 models:
   xptoz:
     staging:
       +schema: staging
     intermediate:
       +schema: intermediate
+      +materialized: table
     marts:
       +schema: marts
+      +materialized: table

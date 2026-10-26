@@ -1,0 +1,19 @@
+version: 2
+
+models:
+  - name: mart_email_domains
+    description: Quantidade de cadastros por domínio de e-mail.
+    columns:
+      - name: dominio_email
+        description: Domínio do e-mail.
+        data_tests:
+          - unique
+          - not_null
+      - name: total_registros
+        description: Quantidade de cadastros com esse domínio.
+        data_tests:
+          - not_null
+      - name: created_at
+        description: Quando o primeiro cadastro desse domínio entrou na staging.
+      - name: updated_at
+        description: Quando a agregação foi recalculada.

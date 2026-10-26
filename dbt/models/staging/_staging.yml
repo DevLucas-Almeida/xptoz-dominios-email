@@ -1,0 +1,34 @@
+version: 2
+
+models:
+  - name: stg_users
+    description: >
+      Cadastro padronizado: textos em maiúsculas e sem espaços extras, vazios como
+      NULL e campos de controle. Incremental por id, preservando created_at.
+    columns:
+      - name: id
+        description: Identificador do cadastro (mesmo id da origem).
+        data_tests:
+          - unique
+          - not_null
+      - name: nome
+        description: Nome completo em maiúsculas.
+        data_tests:
+          - not_null
+      - name: email
+        description: E-mail em maiúsculas.
+        data_tests:
+          - unique
+          - not_null
+      - name: idade
+        description: Idade em anos (NULL se fora de 0–120).
+      - name: cidade
+        description: Cidade em maiúsculas.
+      - name: created_at
+        description: Primeira vez em que o registro foi processado na staging.
+        data_tests:
+          - not_null
+      - name: updated_at
+        description: Última vez em que algum campo do registro mudou.
+        data_tests:
+          - not_null

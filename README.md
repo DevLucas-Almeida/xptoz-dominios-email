@@ -2,7 +2,7 @@
 
 Pipeline de dados que identifica os domínios de e-mail mais usados nos cadastros de pessoas e a quantidade de registros de cada domínio. Os dados brutos ficam no PostgreSQL, as transformações são feitas em camadas com **dbt** e a execução diária é orquestrada pelo **Apache Airflow**.
 
-> 🚧 Em construção. Fase atual: **ambiente** (Docker, Airflow, Postgres e dbt conectados).
+> 🚧 Em construção. Concluído: ambiente e camadas do dbt. Próximo: DAG diária no Airflow.
 
 ## Arquitetura
 
@@ -92,6 +92,8 @@ No Linux, defina também `AIRFLOW_UID` com o resultado de `id -u`.
 | Carregar os dados | `make load-data` | `docker compose run --rm airflow-cli python /opt/airflow/scripts/generate_data.py` |
 | Contar registros | `make db-count` | ver `Makefile` |
 | Validar o dbt | `make dbt-debug` | `docker compose run --rm airflow-cli bash -c "dbt debug"` |
+| Rodar modelos e testes | `make dbt-build` | `docker compose run --rm airflow-cli bash -c "dbt build"` |
+| Documentação e lineage | `make dbt-docs` | `docker compose run --rm -p 8081:8081 airflow-cli bash -c "dbt docs generate && dbt docs serve --host 0.0.0.0 --port 8081 --no-browser"` |
 | Testar o ambiente | `make smoke-test` | `docker compose run --rm airflow-cli airflow dags test smoke_test_ambiente` |
 | Parar | `make down` | `docker compose down` |
 
@@ -108,3 +110,45 @@ SELECT id, nome, email, idade, cidade FROM users_info LIMIT 10;
 ```
 
 A cada execução do script são gerados 1.000 registros. A quantidade inserida pode ser um pouco menor, porque e-mails repetidos são ignorados pela restrição `UNIQUE` em `email`.
+
+## Camadas do dbt
+
+| Camada | Modelo | Materialização | Conteúdo |
+|---|---|---|---|
+| Raw | `public.users_info` (source) | tabela de origem | Dados como gerados pelo script |
+| Staging | `staging.stg_users` | incremental (`unique_key=id`) | Textos em maiúsculas e sem espaços extras, vazios como NULL, `created_at` e `updated_at` |
+| Intermediate | `intermediate.int_users_enriched` | table | `primeiro_nome`, `ultimo_nome` e `dominio_email` |
+| Marts | `marts.mart_email_domains` | table | `total_registros` por `dominio_email` |
+
+### Decisões de modelagem
+
+- **`created_at` / `updated_at` na staging:** o modelo é incremental com merge por `id`. Um registro novo recebe `now()` nos dois campos; um registro existente mantém o `created_at` original, e o `updated_at` só muda quando algum campo do registro foi alterado na origem. Assim os campos de controle têm significado estável entre execuções diárias, em vez de mudarem a cada leitura.
+- **Pronomes de tratamento:** o Faker gera cerca de 19% dos nomes com `Dr.`, `Dra.`, `Sr.`, `Sra.` ou `Srta.`. Eles são removidos antes de separar o nome, para que o primeiro nome não seja, por exemplo, `DR.`. A coluna `nome` mantém o nome completo original.
+- **Último nome:** é o último token do nome. Partículas (`DA`, `DAS`) ficam no meio e não afetam o resultado. Sobrenomes compostos sem partícula (ex.: `CASA GRANDE`) retornam só o último token — limitação documentada.
+- **`created_at` / `updated_at` no mart:** `created_at` é quando o primeiro cadastro do domínio entrou na staging; `updated_at` é quando a agregação foi recalculada.
+- **Apenas 3 domínios no resultado:** o script do case usa `fake.email()`, que por padrão gera somente domínios reservados para exemplos (`example.com`, `example.net`, `example.org`). Por isso o mart tem 3 linhas, com distribuição próxima de 1/3 cada. O script foi mantido como fornecido.
+
+### Testes
+
+`dbt build` executa os modelos e 25 testes na ordem das dependências:
+
+- **Genéricos:** `unique` e `not_null` nas chaves da origem e de cada camada; `not_null` em `primeiro_nome`, `dominio_email` e nos campos de controle.
+- **Singulares (`dbt/tests/`):**
+  - `assert_staging_completa_em_relacao_a_origem` — nenhum registro da origem fica de fora da staging;
+  - `assert_staging_textos_em_maiusculas` — padronização de textos;
+  - `assert_intermediate_nomes_e_dominios_validos` — primeiro nome sem pronome, extração correta de nome e domínio;
+  - `assert_mart_soma_igual_total_usuarios` — a soma do mart é igual ao total de cadastros (nenhum registro perdido ou duplicado na agregação).
+
+### Consultas de conferência
+
+```sql
+-- Resultado final
+SELECT dominio_email, total_registros
+FROM marts.mart_email_domains
+ORDER BY total_registros DESC;
+
+-- Amostra da extração de nomes e domínios
+SELECT nome, primeiro_nome, ultimo_nome, dominio_email
+FROM intermediate.int_users_enriched
+LIMIT 10;
+```

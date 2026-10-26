@@ -1,0 +1,35 @@
+version: 2
+
+models:
+  - name: int_users_enriched
+    description: >
+      Cadastro enriquecido com primeiro e último nome (sem pronomes de tratamento)
+      e domínio do e-mail.
+    columns:
+      - name: id
+        description: Identificador do cadastro.
+        data_tests:
+          - unique
+          - not_null
+      - name: nome
+        description: Nome completo como veio da staging (inclui pronome de tratamento, se houver).
+      - name: primeiro_nome
+        description: Primeiro nome, sem pronomes de tratamento (DR., DRA., SR., SRA., SRTA.).
+        data_tests:
+          - not_null
+      - name: ultimo_nome
+        description: Último token do nome; NULL quando o nome tem um único token.
+      - name: email
+        description: E-mail em maiúsculas.
+      - name: dominio_email
+        description: Parte do e-mail após o "@".
+        data_tests:
+          - not_null
+      - name: idade
+        description: Idade em anos.
+      - name: cidade
+        description: Cidade em maiúsculas.
+      - name: created_at
+        description: Herdado da staging.
+      - name: updated_at
+        description: Herdado da staging.
