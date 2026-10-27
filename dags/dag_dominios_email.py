@@ -14,8 +14,8 @@ import os
 from datetime import timedelta
 
 import pendulum
-from airflow.exceptions import AirflowFailException
 from airflow.sdk import dag, task
+from airflow.sdk.exceptions import AirflowFailException
 from cosmos import (
     DbtTaskGroup,
     ExecutionConfig,
@@ -46,7 +46,7 @@ def conectar_postgres():
 
 @dag(
     dag_id="dominios_email_diario",
-    description="Consolida a quantidade de cadastros por domínio de e-mail (dbt: staging → intermediate → marts)",
+    description="Cadastros por domínio de e-mail (dbt: staging → intermediate → marts)",
     schedule="0 6 * * *",
     start_date=pendulum.datetime(2026, 10, 1, tz="America/Sao_Paulo"),
     catchup=False,
@@ -70,7 +70,8 @@ def dominios_email_diario():
                 cur.execute("select to_regclass('public.users_info') is not null")
                 if not cur.fetchone()[0]:
                     raise AirflowFailException(
-                        "Tabela public.users_info não encontrada. Rode scripts/generate_data.py antes."
+                        "Tabela public.users_info não encontrada. "
+                        "Rode scripts/generate_data.py antes."
                     )
                 cur.execute("select count(*) from public.users_info")
                 total = cur.fetchone()[0]

@@ -28,3 +28,7 @@ venv/
 .idea/
 .DS_Store
 Thumbs.db
+
+# Ambientes locais do CI / testes
+.airflow/
+.venv-dbt/

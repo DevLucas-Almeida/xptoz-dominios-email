@@ -1,0 +1,118 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: "3.12"
+  AIRFLOW_VERSION: "3.3.2"
+  # Banco efêmero do próprio CI (service container). Não são credenciais reais.
+  PG_HOST: localhost
+  PG_PORT: "5432"
+  PG_USER: xptoz
+  PG_PASSWORD: xptoz_ci
+  PG_DBNAME: xptoz
+  PG_SSLMODE: disable
+
+jobs:
+  lint:
+    name: Lint (ruff)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - run: pip install ruff
+      - run: ruff check .
+
+  dbt:
+    name: dbt build (Postgres 16)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: xptoz
+          POSTGRES_PASSWORD: xptoz_ci
+          POSTGRES_DB: xptoz
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U xptoz -d xptoz"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DBT_PROJECT_DIR: dbt
+      DBT_PROFILES_DIR: dbt
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Instalar dbt e dependências do script de carga
+        run: pip install -r requirements-dbt.txt "$(grep -i '^faker' requirements.txt)" psycopg2-binary
+
+      - name: Carga inicial (script do case)
+        run: python scripts/generate_data.py
+
+      - name: dbt debug
+        run: dbt debug
+
+      - name: dbt build — primeira execução (carga completa)
+        run: dbt build
+
+      - name: Nova carga de dados
+        run: python scripts/generate_data.py
+
+      - name: dbt build — segunda execução (incremental)
+        run: dbt build
+
+      - name: Resultado final
+        run: |
+          psql "postgresql://$PG_USER:$PG_PASSWORD@$PG_HOST:$PG_PORT/$PG_DBNAME" \
+            -c "select dominio_email, total_registros from marts.mart_email_domains order by total_registros desc"
+
+  dags:
+    name: Integridade das DAGs (pytest)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      AIRFLOW_HOME: ${{ github.workspace }}/.airflow
+      AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+      DBT_PROJECT_DIR: ${{ github.workspace }}/dbt
+      DBT_PROFILES_DIR: ${{ github.workspace }}/dbt
+      DBT_EXECUTABLE_PATH: ${{ github.workspace }}/.venv-dbt/bin/dbt
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Instalar dbt em virtualenv isolado (como na imagem Docker)
+        run: |
+          python -m venv .venv-dbt
+          .venv-dbt/bin/pip install -r requirements-dbt.txt
+
+      - name: Instalar Airflow, Cosmos e pytest
+        run: |
+          pip install "apache-airflow[postgres]==${AIRFLOW_VERSION}" \
+            --constraint "https://raw.githubusercontent.com/apache/airflow/constraints-${AIRFLOW_VERSION}/constraints-${PYTHON_VERSION}.txt"
+          pip install "apache-airflow==${AIRFLOW_VERSION}" -r requirements.txt pytest
+
+      - name: Inicializar banco de metadados do Airflow
+        run: airflow db migrate
+
+      - name: Testes de integridade das DAGs
+        run: pytest tests -v

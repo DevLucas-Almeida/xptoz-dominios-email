@@ -1,0 +1,10 @@
+# Configuração de lint do código Python (DAGs e scripts).
+# Executado no CI com: ruff check .
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+extend-exclude = ["logs", "dbt/target", "dbt/logs"]
+
+[tool.ruff.lint]
+# pycodestyle, pyflakes, isort, bugbear e pyupgrade
+select = ["E", "F", "I", "B", "UP"]

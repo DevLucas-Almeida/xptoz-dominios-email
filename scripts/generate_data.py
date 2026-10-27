@@ -13,7 +13,6 @@ import os
 import psycopg2
 from faker import Faker
 
-
 DB_CONFIG = {
     "host": os.environ["PG_HOST"],
     "user": os.environ["PG_USER"],
