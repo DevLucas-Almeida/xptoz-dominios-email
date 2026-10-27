@@ -2,7 +2,7 @@
 
 Pipeline de dados que identifica os domínios de e-mail mais usados nos cadastros de pessoas e a quantidade de registros de cada domínio. Os dados brutos ficam no PostgreSQL, as transformações são feitas em camadas com **dbt** e a execução diária é orquestrada pelo **Apache Airflow**.
 
-> 🚧 Em construção. Concluído: ambiente e camadas do dbt. Próximo: DAG diária no Airflow.
+> 🚧 Em construção. Concluído: ambiente, camadas do dbt e DAG diária. Próximo: documentação final e vídeo.
 
 ## Arquitetura
 
@@ -28,6 +28,7 @@ O dbt roda em um **virtualenv isolado** dentro da imagem do Airflow (`/opt/dbt_v
 
 ```
 ├── dags/                       # DAGs do Airflow
+│   ├── dag_dominios_email.py   # DAG diária (06:00) que orquestra o dbt via Cosmos
 │   └── smoke_test_ambiente.py  # verificação do ambiente (execução manual)
 ├── dbt/                        # projeto dbt
 │   ├── dbt_project.yml
@@ -94,6 +95,7 @@ No Linux, defina também `AIRFLOW_UID` com o resultado de `id -u`.
 | Validar o dbt | `make dbt-debug` | `docker compose run --rm airflow-cli bash -c "dbt debug"` |
 | Rodar modelos e testes | `make dbt-build` | `docker compose run --rm airflow-cli bash -c "dbt build"` |
 | Documentação e lineage | `make dbt-docs` | `docker compose run --rm -p 8081:8081 airflow-cli bash -c "dbt docs generate && dbt docs serve --host 0.0.0.0 --port 8081 --no-browser"` |
+| Rodar a DAG diária pelo terminal | `make dag-test` | `docker compose run --rm airflow-cli airflow dags test dominios_email_diario` |
 | Testar o ambiente | `make smoke-test` | `docker compose run --rm airflow-cli airflow dags test smoke_test_ambiente` |
 | Parar | `make down` | `docker compose down` |
 
@@ -152,3 +154,40 @@ SELECT nome, primeiro_nome, ultimo_nome, dominio_email
 FROM intermediate.int_users_enriched
 LIMIT 10;
 ```
+
+## Orquestração (Airflow)
+
+A DAG **`dominios_email_diario`** (`dags/dag_dominios_email.py`) executa o pipeline completo uma vez por dia.
+
+| Configuração | Valor |
+|---|---|
+| Agendamento | `0 6 * * *` — todo dia às 06:00, fuso `America/Sao_Paulo` |
+| Catchup | desativado (não reprocessa dias passados ao ser ativada) |
+| Execuções simultâneas | no máximo 1 |
+| Retentativas | 2, com intervalo de 5 minutos (a verificação da origem não tem retentativa) |
+| Timeout da execução | 30 minutos |
+
+### Fluxo de tasks
+
+```
+verificar_origem
+  → transformacao_dbt
+      raw_users_info (testes da source)
+        → stg_users.run → stg_users.test
+            → int_users_enriched.run → int_users_enriched.test
+                → mart_email_domains.run → mart_email_domains.test
+      + testes que dependem de mais de um modelo, em tasks próprias
+  → resumo_resultado
+```
+
+- **`verificar_origem`** — falha imediatamente, sem retentativas, se `public.users_info` não existir ou estiver vazia.
+- **`transformacao_dbt`** — grupo gerado pelo [Astronomer Cosmos](https://github.com/astronomer/astronomer-cosmos) a partir do projeto dbt. Cada modelo vira uma task de `run` seguida de uma task de `test`, e as dependências vêm dos `ref()` do dbt. Assim, a ordem staging → intermediate → marts é garantida e uma falha de teste interrompe as camadas seguintes. O status de cada modelo pode ser acompanhado individualmente na UI.
+- **`resumo_resultado`** — imprime no log o ranking de domínios com a quantidade e o percentual de cada um, e publica o resultado em XCom.
+
+### Como executar
+
+1. Acesse http://localhost:8080 e ative a DAG `dominios_email_diario` pelo toggle (DAGs novas começam pausadas).
+2. A partir daí, ela roda automaticamente todos os dias às 06:00. Para executar na hora, clique em **Trigger**.
+3. Acompanhe o andamento em **Grid** ou **Graph**. O resultado final aparece no log da task `resumo_resultado`.
+
+Para demonstrar a atualização dos resultados: rode `make load-data` para inserir novos cadastros e dispare a DAG de novo. Os totais em `marts.mart_email_domains` aumentam, e os registros antigos mantêm o `created_at` original na staging.
